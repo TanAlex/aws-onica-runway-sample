@@ -1,0 +1,7 @@
+---
+# Full syntax at https://github.com/onicagroup/runway
+deployments:
+  - modules:
+      - sampleapp.cfn
+    regions:
+      - us-west-1

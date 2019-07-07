@@ -1,0 +1,499 @@
+{
+    "Mappings": {
+        "AmiMap": {
+            "us-west-1": {
+                "NAT": "ami-ad227cc4",
+                "bastion": "ami-74e27e1c",
+                "centos7": "ami-074e2d6769f445be5",
+                "ubuntu1404": "ami-74e27e1c"
+            },
+            "us-west-2": {
+                "NAT": "ami-290f4119",
+                "bastion": "ami-5189a661",
+                "centos7": "ami-01ed306a12b7d1c96",
+                "ubuntu1404": "ami-5189a661"
+            }
+        }
+    },
+    "Outputs": {
+        "AvailabilityZone0": {
+            "Value": {
+                "Fn::Select": [
+                    0,
+                    {
+                        "Fn::GetAZs": ""
+                    }
+                ]
+            }
+        },
+        "AvailabilityZone1": {
+            "Value": {
+                "Fn::Select": [
+                    1,
+                    {
+                        "Fn::GetAZs": ""
+                    }
+                ]
+            }
+        },
+        "AvailabilityZones": {
+            "Value": {
+                "Fn::Join": [
+                    ",",
+                    [{
+                            "Fn::Select": [
+                                0,
+                                {
+                                    "Fn::GetAZs": ""
+                                }
+                            ]
+                        },
+                        {
+                            "Fn::Select": [
+                                1,
+                                {
+                                    "Fn::GetAZs": ""
+                                }
+                            ]
+                        }
+                    ]
+                ]
+            }
+        },
+        "DefaultSG": {
+            "Value": {
+                "Ref": "DefaultSG"
+            }
+        },
+        "InternalZoneId": {
+            "Value": {
+                "Ref": "InternalZone"
+            }
+        },
+        "InternalZoneName": {
+            "Value": "internal"
+        },
+        "NatGateway0Id": {
+            "Value": {
+                "Ref": "NatGateway0"
+            }
+        },
+        "NatGateway1Id": {
+            "Value": {
+                "Ref": "NatGateway1"
+            }
+        },
+        "PrivateSubnet0": {
+            "Value": {
+                "Ref": "PrivateSubnet0"
+            }
+        },
+        "PrivateSubnet1": {
+            "Value": {
+                "Ref": "PrivateSubnet1"
+            }
+        },
+        "PrivateSubnets": {
+            "Value": {
+                "Fn::Join": [
+                    ",",
+                    [{
+                            "Ref": "PrivateSubnet0"
+                        },
+                        {
+                            "Ref": "PrivateSubnet1"
+                        }
+                    ]
+                ]
+            }
+        },
+        "PublicSubnet0": {
+            "Value": {
+                "Ref": "PublicSubnet0"
+            }
+        },
+        "PublicSubnet1": {
+            "Value": {
+                "Ref": "PublicSubnet1"
+            }
+        },
+        "PublicSubnets": {
+            "Value": {
+                "Fn::Join": [
+                    ",",
+                    [{
+                            "Ref": "PublicSubnet0"
+                        },
+                        {
+                            "Ref": "PublicSubnet1"
+                        }
+                    ]
+                ]
+            }
+        },
+        "VpcId": {
+            "Value": {
+                "Ref": "VPC"
+            }
+        }
+    },
+    "Resources": {
+        "DHCPAssociation": {
+            "Properties": {
+                "DhcpOptionsId": {
+                    "Ref": "DHCPOptions"
+                },
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::VPCDHCPOptionsAssociation"
+        },
+        "DHCPOptions": {
+            "Properties": {
+                "DomainName": {
+                    "Fn::Join": [
+                        " ",
+                        [
+                            "internal",
+                            ""
+                        ]
+                    ]
+                },
+                "DomainNameServers": [
+                    "AmazonProvidedDNS"
+                ]
+            },
+            "Type": "AWS::EC2::DHCPOptions"
+        },
+        "DefaultACL": {
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::NetworkAcl"
+        },
+        "DefaultSG": {
+            "Properties": {
+                "GroupDescription": "Default Security Group",
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        },
+        "GatewayAttach": {
+            "Properties": {
+                "InternetGatewayId": {
+                    "Ref": "InternetGateway"
+                },
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::VPCGatewayAttachment"
+        },
+        "InternalZone": {
+            "Properties": {
+                "Name": "internal",
+                "VPCs": [{
+                    "VPCId": {
+                        "Ref": "VPC"
+                    },
+                    "VPCRegion": {
+                        "Ref": "AWS::Region"
+                    }
+                }]
+            },
+            "Type": "AWS::Route53::HostedZone"
+        },
+        "InternetGateway": {
+            "Type": "AWS::EC2::InternetGateway"
+        },
+        "NATExternalIp0": {
+            "DependsOn": "GatewayAttach",
+            "Properties": {
+                "Domain": "vpc",
+                "InstanceId": {
+                    "Ref": "AWS::NoValue"
+                }
+            },
+            "Type": "AWS::EC2::EIP"
+        },
+        "NATExternalIp1": {
+            "DependsOn": "GatewayAttach",
+            "Properties": {
+                "Domain": "vpc",
+                "InstanceId": {
+                    "Ref": "AWS::NoValue"
+                }
+            },
+            "Type": "AWS::EC2::EIP"
+        },
+        "NatGateway0": {
+            "Properties": {
+                "AllocationId": {
+                    "Fn::GetAtt": [
+                        "NATExternalIp0",
+                        "AllocationId"
+                    ]
+                },
+                "SubnetId": {
+                    "Ref": "PublicSubnet0"
+                }
+            },
+            "Type": "AWS::EC2::NatGateway"
+        },
+        "NatGateway1": {
+            "Properties": {
+                "AllocationId": {
+                    "Fn::GetAtt": [
+                        "NATExternalIp1",
+                        "AllocationId"
+                    ]
+                },
+                "SubnetId": {
+                    "Ref": "PublicSubnet1"
+                }
+            },
+            "Type": "AWS::EC2::NatGateway"
+        },
+        "PrivateRoute0": {
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "NatGatewayId": {
+                    "Ref": "NatGateway0"
+                },
+                "RouteTableId": {
+                    "Ref": "PrivateRouteTable0"
+                }
+            },
+            "Type": "AWS::EC2::Route"
+        },
+        "PrivateRoute1": {
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "NatGatewayId": {
+                    "Ref": "NatGateway1"
+                },
+                "RouteTableId": {
+                    "Ref": "PrivateRouteTable1"
+                }
+            },
+            "Type": "AWS::EC2::Route"
+        },
+        "PrivateRouteTable0": {
+            "Properties": {
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "private"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::RouteTable"
+        },
+        "PrivateRouteTable1": {
+            "Properties": {
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "private"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::RouteTable"
+        },
+        "PrivateRouteTableAssociation0": {
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "PrivateRouteTable0"
+                },
+                "SubnetId": {
+                    "Ref": "PrivateSubnet0"
+                }
+            },
+            "Type": "AWS::EC2::SubnetRouteTableAssociation"
+        },
+        "PrivateRouteTableAssociation1": {
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "PrivateRouteTable1"
+                },
+                "SubnetId": {
+                    "Ref": "PrivateSubnet1"
+                }
+            },
+            "Type": "AWS::EC2::SubnetRouteTableAssociation"
+        },
+        "PrivateSubnet0": {
+            "DependsOn": "GatewayAttach",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        0,
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.128.8.0/22",
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "private"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::Subnet"
+        },
+        "PrivateSubnet1": {
+            "DependsOn": "GatewayAttach",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        1,
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.128.12.0/22",
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "private"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::Subnet"
+        },
+        "PublicRoute0": {
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "InternetGateway"
+                },
+                "RouteTableId": {
+                    "Ref": "PublicRouteTable0"
+                }
+            },
+            "Type": "AWS::EC2::Route"
+        },
+        "PublicRoute1": {
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "InternetGateway"
+                },
+                "RouteTableId": {
+                    "Ref": "PublicRouteTable1"
+                }
+            },
+            "Type": "AWS::EC2::Route"
+        },
+        "PublicRouteTable0": {
+            "Properties": {
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "public"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::RouteTable"
+        },
+        "PublicRouteTable1": {
+            "Properties": {
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "public"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::RouteTable"
+        },
+        "PublicRouteTableAssociation0": {
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "PublicRouteTable0"
+                },
+                "SubnetId": {
+                    "Ref": "PublicSubnet0"
+                }
+            },
+            "Type": "AWS::EC2::SubnetRouteTableAssociation"
+        },
+        "PublicRouteTableAssociation1": {
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "PublicRouteTable1"
+                },
+                "SubnetId": {
+                    "Ref": "PublicSubnet1"
+                }
+            },
+            "Type": "AWS::EC2::SubnetRouteTableAssociation"
+        },
+        "PublicSubnet0": {
+            "DependsOn": "GatewayAttach",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        0,
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.128.0.0/24",
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "public"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::Subnet"
+        },
+        "PublicSubnet1": {
+            "DependsOn": "GatewayAttach",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        1,
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.128.1.0/24",
+                "Tags": [{
+                    "Key": "type",
+                    "Value": "public"
+                }],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::Subnet"
+        },
+        "VPC": {
+            "Properties": {
+                "CidrBlock": "10.128.0.0/16",
+                "EnableDnsHostnames": "true",
+                "EnableDnsSupport": "true"
+            },
+            "Type": "AWS::EC2::VPC"
+        }
+    }
+}

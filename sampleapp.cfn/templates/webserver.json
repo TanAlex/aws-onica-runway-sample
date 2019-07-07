@@ -1,0 +1,460 @@
+{
+    "Conditions": {
+        "CreateELB": {
+            "Fn::Not": [{
+                "Fn::Equals": [{
+                        "Ref": "ELBHostName"
+                    },
+                    ""
+                ]
+            }]
+        },
+        "CreateSSLELB": {
+            "Fn::And": [{
+                    "Condition": "CreateELB"
+                },
+                {
+                    "Condition": "UseSSL"
+                }
+            ]
+        },
+        "SetupDNS": {
+            "Fn::Not": [{
+                "Fn::Equals": [{
+                        "Ref": "BaseDomain"
+                    },
+                    ""
+                ]
+            }]
+        },
+        "SetupELBDNS": {
+            "Fn::And": [{
+                    "Condition": "CreateELB"
+                },
+                {
+                    "Condition": "SetupDNS"
+                }
+            ]
+        },
+        "UseIAMCert": {
+            "Fn::Not": [{
+                "Fn::Equals": [{
+                        "Ref": "ELBCertType"
+                    },
+                    "acm"
+                ]
+            }]
+        },
+        "UseSSL": {
+            "Fn::Not": [{
+                "Fn::Equals": [{
+                        "Ref": "ELBCertName"
+                    },
+                    ""
+                ]
+            }]
+        }
+    },
+    "Mappings": {
+        "AmiMap": {
+            "us-west-1": {
+                "NAT": "ami-ad227cc4",
+                "bastion": "ami-074e2d6769f445be5",
+                "centos7": "ami-074e2d6769f445be5",
+                "ubuntu1404": "ami-74e27e1c"
+            },
+            "us-west-2": {
+                "NAT": "ami-290f4119",
+                "bastion": "ami-01ed306a12b7d1c96",
+                "centos7": "ami-01ed306a12b7d1c96",
+                "ubuntu1404": "ami-5189a661"
+            }
+        }
+    },
+    "Parameters": {
+        "AvailabilityZones": {
+            "Description": "Availability Zones to deploy instances in.",
+            "Type": "CommaDelimitedList"
+        },
+        "BaseDomain": {
+            "Default": "",
+            "Description": "Base domain for the stack.",
+            "Type": "String"
+        },
+        "DefaultSG": {
+            "Description": "Top level security group.",
+            "Type": "AWS::EC2::SecurityGroup::Id"
+        },
+        "ELBCertName": {
+            "Default": "",
+            "Description": "The SSL certificate name to use on the ELB.",
+            "Type": "String"
+        },
+        "ELBCertType": {
+            "Default": "",
+            "Description": "The SSL certificate type to use on the ELB.",
+            "Type": "String"
+        },
+        "ELBHostName": {
+            "Default": "",
+            "Description": "A hostname to give to the ELB. If not given no ELB will be created.",
+            "Type": "String"
+        },
+        "ImageName": {
+            "Description": "The image name to use from the AMIMap (usually found in the config file.)",
+            "Type": "String"
+        },
+        "InstanceType": {
+            "Default": "m3.medium",
+            "Description": "EC2 Instance Type",
+            "Type": "String"
+        },
+        "MaxSize": {
+            "Default": "5",
+            "Description": "Maximum # of instances.",
+            "Type": "Number"
+        },
+        "MinSize": {
+            "Default": "1",
+            "Description": "Minimum # of instances.",
+            "Type": "Number"
+        },
+        "PrivateSubnets": {
+            "Description": "Subnets to deploy private instances in.",
+            "Type": "List<AWS::EC2::Subnet::Id>"
+        },
+        "PublicSubnets": {
+            "Description": "Subnets to deploy public (elb) instances in.",
+            "Type": "List<AWS::EC2::Subnet::Id>"
+        },
+        "SshKeyName": {
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        },
+        "UserData": {
+            "Description": "UserData for the ASG EC2 Instances.",
+            "Type": "String"
+        },
+        "VpcId": {
+            "Description": "Vpc Id",
+            "Type": "AWS::EC2::VPC::Id"
+        }
+    },
+    "Resources": {
+        "CPUAlarmHigh": {
+            "Properties": {
+                "AlarmActions": [{
+                    "Ref": "ScaleUpPolicy"
+                }],
+                "AlarmDescription": "Alarm if CPU too high or metric disappears indicating instance is down",
+                "ComparisonOperator": "GreaterThanThreshold",
+                "Dimensions": [{
+                    "Name": "AutoScalingGroupName",
+                    "Value": {
+                        "Ref": "webserverASG"
+                    }
+                }],
+                "EvaluationPeriods": "10",
+                "MetricName": "CPUUtilization",
+                "Namespace": "AWS/EC2",
+                "Period": "60",
+                "Statistic": "Average",
+                "Threshold": "50"
+            },
+            "Type": "AWS::CloudWatch::Alarm"
+        },
+        "CPUAlarmLow": {
+            "Properties": {
+                "AlarmActions": [{
+                    "Ref": "ScaleDownPolicy"
+                }],
+                "AlarmDescription": "Alarm if CPU is not high anymore, scale down instances",
+                "ComparisonOperator": "LessThanThreshold",
+                "Dimensions": [{
+                    "Name": "AutoScalingGroupName",
+                    "Value": {
+                        "Ref": "webserverASG"
+                    }
+                }],
+                "EvaluationPeriods": "10",
+                "MetricName": "CPUUtilization",
+                "Namespace": "AWS/EC2",
+                "Period": "60",
+                "Statistic": "Average",
+                "Threshold": "10"
+            },
+            "Type": "AWS::CloudWatch::Alarm"
+        },
+        "InternetTowebserverElbPort443": {
+            "Condition": "CreateSSLELB",
+            "Properties": {
+                "CidrIp": "0.0.0.0/0",
+                "FromPort": "443",
+                "GroupId": {
+                    "Ref": "webserverElbSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": "443"
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "InternetTowebserverElbPort80": {
+            "Condition": "CreateELB",
+            "Properties": {
+                "CidrIp": "0.0.0.0/0",
+                "FromPort": "80",
+                "GroupId": {
+                    "Ref": "webserverElbSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": "80"
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "ScaleDownPolicy": {
+            "Properties": {
+                "AdjustmentType": "ChangeInCapacity",
+                "AutoScalingGroupName": {
+                    "Ref": "webserverASG"
+                },
+                "Cooldown": "5",
+                "ScalingAdjustment": "-1"
+            },
+            "Type": "AWS::AutoScaling::ScalingPolicy"
+        },
+        "ScaleUpPolicy": {
+            "Properties": {
+                "AdjustmentType": "ChangeInCapacity",
+                "AutoScalingGroupName": {
+                    "Ref": "webserverASG"
+                },
+                "Cooldown": "5",
+                "ScalingAdjustment": "1"
+            },
+            "Type": "AWS::AutoScaling::ScalingPolicy"
+        },
+        "webserverASG": {
+            "Properties": {
+                "AvailabilityZones": {
+                    "Ref": "AvailabilityZones"
+                },
+                "LaunchConfigurationName": {
+                    "Ref": "webserverASGLaunchConfig"
+                },
+                "LoadBalancerNames": {
+                    "Fn::If": [
+                        "CreateELB",
+                        [{
+                            "Ref": "webserverLoadBalancer"
+                        }],
+                        []
+                    ]
+                },
+                "MaxSize": {
+                    "Ref": "MaxSize"
+                },
+                "MetricsCollection": [{
+                    "Granularity": "1Minute"
+                }],
+                "MinSize": {
+                    "Ref": "MinSize"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "PropagateAtLaunch": true,
+                    "Value": "webserver"
+                }],
+                "VPCZoneIdentifier": {
+                    "Ref": "PrivateSubnets"
+                }
+            },
+            "Type": "AWS::AutoScaling::AutoScalingGroup"
+        },
+        "webserverASGLaunchConfig": {
+            "Properties": {
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "AmiMap",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        {
+                            "Ref": "ImageName"
+                        }
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "KeyName": {
+                    "Ref": "SshKeyName"
+                },
+                "SecurityGroups": [{
+                        "Ref": "DefaultSG"
+                    },
+                    {
+                        "Ref": "webserverSG"
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Ref": "UserData"
+                    }
+                }
+            },
+            "Type": "AWS::AutoScaling::LaunchConfiguration"
+        },
+        "webserverElbSecurityGroup": {
+            "Condition": "CreateELB",
+            "Properties": {
+                "GroupDescription": "webserverElbSecurityGroup",
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        },
+        "webserverElbToASGPort80": {
+            "Condition": "CreateELB",
+            "Properties": {
+                "FromPort": "80",
+                "GroupId": {
+                    "Ref": "webserverSG"
+                },
+                "IpProtocol": "tcp",
+                "SourceSecurityGroupId": {
+                    "Ref": "webserverElbSecurityGroup"
+                },
+                "ToPort": "80"
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "webserverLoadBalancer": {
+            "Condition": "CreateELB",
+            "Properties": {
+                "HealthCheck": {
+                    "HealthyThreshold": 3,
+                    "Interval": 5,
+                    "Target": "HTTP:80/",
+                    "Timeout": 3,
+                    "UnhealthyThreshold": 3
+                },
+                "Listeners": {
+                    "Fn::If": [
+                        "UseSSL",
+                        [{
+                                "InstancePort": 80,
+                                "InstanceProtocol": "HTTP",
+                                "LoadBalancerPort": 80,
+                                "Protocol": "HTTP"
+                            },
+                            {
+                                "InstancePort": 80,
+                                "InstanceProtocol": "HTTP",
+                                "LoadBalancerPort": 443,
+                                "Protocol": "HTTPS",
+                                "SSLCertificateId": {
+                                    "Fn::If": [
+                                        "UseIAMCert",
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:iam::",
+                                                    {
+                                                        "Ref": "AWS::AccountId"
+                                                    },
+                                                    ":server-certificate/",
+                                                    {
+                                                        "Ref": "ELBCertName"
+                                                    }
+                                                ]
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:acm:",
+                                                    {
+                                                        "Ref": "AWS::Region"
+                                                    },
+                                                    ":",
+                                                    {
+                                                        "Ref": "AWS::AccountId"
+                                                    },
+                                                    ":certificate/",
+                                                    {
+                                                        "Ref": "ELBCertName"
+                                                    }
+                                                ]
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        [{
+                            "InstancePort": 80,
+                            "InstanceProtocol": "HTTP",
+                            "LoadBalancerPort": 80,
+                            "Protocol": "HTTP"
+                        }]
+                    ]
+                },
+                "SecurityGroups": [{
+                    "Ref": "webserverElbSecurityGroup"
+                }],
+                "Subnets": {
+                    "Ref": "PublicSubnets"
+                }
+            },
+            "Type": "AWS::ElasticLoadBalancing::LoadBalancer"
+        },
+        "webserverLoadBalancerDnsRecord": {
+            "Condition": "SetupELBDNS",
+            "Properties": {
+                "Comment": "Router ELB DNS",
+                "HostedZoneName": {
+                    "Fn::Join": [
+                        "",
+                        [{
+                                "Ref": "BaseDomain"
+                            },
+                            "."
+                        ]
+                    ]
+                },
+                "Name": {
+                    "Fn::Join": [
+                        ".",
+                        [{
+                                "Ref": "ELBHostName"
+                            },
+                            {
+                                "Ref": "BaseDomain"
+                            }
+                        ]
+                    ]
+                },
+                "ResourceRecords": [{
+                    "Fn::GetAtt": [
+                        "webserverLoadBalancer",
+                        "DNSName"
+                    ]
+                }],
+                "TTL": "120",
+                "Type": "CNAME"
+            },
+            "Type": "AWS::Route53::RecordSet"
+        },
+        "webserverSG": {
+            "Properties": {
+                "GroupDescription": "webserverSG",
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        }
+    }
+}

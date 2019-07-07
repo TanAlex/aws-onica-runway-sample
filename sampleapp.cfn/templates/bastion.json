@@ -1,0 +1,163 @@
+{
+    "Mappings": {
+        "AmiMap": {
+            "us-west-1": {
+                "NAT": "ami-ad227cc4",
+                "bastion": "ami-074e2d6769f445be5",
+                "centos7": "ami-074e2d6769f445be5",
+                "ubuntu1404": "ami-74e27e1c"
+            },
+            "us-west-2": {
+                "NAT": "ami-290f4119",
+                "bastion": "ami-01ed306a12b7d1c96",
+                "centos7": "ami-01ed306a12b7d1c96",
+                "ubuntu1404": "ami-5189a661"
+            }
+        }
+    },
+    "Outputs": {
+        "SecurityGroup": {
+            "Value": {
+                "Ref": "BastionSecurityGroup"
+            }
+        }
+    },
+    "Parameters": {
+        "AvailabilityZones": {
+            "Description": "Availability Zones to deploy instances in.",
+            "Type": "CommaDelimitedList"
+        },
+        "DefaultSG": {
+            "Description": "Top level security group.",
+            "Type": "AWS::EC2::SecurityGroup::Id"
+        },
+        "ImageName": {
+            "Default": "bastion",
+            "Description": "The image name to use from the AMIMap (usually found in the config file.)",
+            "Type": "String"
+        },
+        "InstanceType": {
+            "Default": "m3.medium",
+            "Description": "EC2 Instance Type",
+            "Type": "String"
+        },
+        "MaxSize": {
+            "Default": "5",
+            "Description": "Maximum # of instances.",
+            "Type": "Number"
+        },
+        "MinSize": {
+            "Default": "1",
+            "Description": "Minimum # of instances.",
+            "Type": "Number"
+        },
+        "OfficeNetwork": {
+            "Description": "CIDR block allowed to connect to bastion hosts.",
+            "Type": "String"
+        },
+        "PrivateSubnets": {
+            "Description": "Subnets to deploy private instances in.",
+            "Type": "List<AWS::EC2::Subnet::Id>"
+        },
+        "PublicSubnets": {
+            "Description": "Subnets to deploy public instances in.",
+            "Type": "List<AWS::EC2::Subnet::Id>"
+        },
+        "SshKeyName": {
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        },
+        "VpcId": {
+            "Description": "Vpc Id",
+            "Type": "AWS::EC2::VPC::Id"
+        }
+    },
+    "Resources": {
+        "AllowSSHAnywhere": {
+            "Properties": {
+                "FromPort": 22,
+                "GroupId": {
+                    "Ref": "DefaultSG"
+                },
+                "IpProtocol": "tcp",
+                "SourceSecurityGroupId": {
+                    "Ref": "BastionSecurityGroup"
+                },
+                "ToPort": 22
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "BastionAutoscalingGroup": {
+            "Properties": {
+                "AvailabilityZones": {
+                    "Ref": "AvailabilityZones"
+                },
+                "LaunchConfigurationName": {
+                    "Ref": "BastionLaunchConfig"
+                },
+                "MaxSize": {
+                    "Ref": "MaxSize"
+                },
+                "MinSize": {
+                    "Ref": "MinSize"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "PropagateAtLaunch": true,
+                    "Value": "bastion"
+                }],
+                "VPCZoneIdentifier": {
+                    "Ref": "PublicSubnets"
+                }
+            },
+            "Type": "AWS::AutoScaling::AutoScalingGroup"
+        },
+        "BastionLaunchConfig": {
+            "Properties": {
+                "AssociatePublicIpAddress": "true",
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "AmiMap",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        {
+                            "Ref": "ImageName"
+                        }
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "KeyName": {
+                    "Ref": "SshKeyName"
+                },
+                "SecurityGroups": [{
+                        "Ref": "DefaultSG"
+                    },
+                    {
+                        "Ref": "BastionSecurityGroup"
+                    }
+                ],
+                "UserData": ""
+            },
+            "Type": "AWS::AutoScaling::LaunchConfiguration"
+        },
+        "BastionSecurityGroup": {
+            "Properties": {
+                "GroupDescription": "BastionSecurityGroup",
+                "SecurityGroupIngress": [{
+                    "CidrIp": {
+                        "Ref": "OfficeNetwork"
+                    },
+                    "FromPort": 22,
+                    "IpProtocol": "tcp",
+                    "ToPort": 22
+                }],
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        }
+    }
+}

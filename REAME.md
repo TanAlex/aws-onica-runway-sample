@@ -41,3 +41,8 @@ Use browser to check the name, my sample one is like:
 http://onica-dev-webserve-g4lutwjiq76f-202124472.us-west-1.elb.amazonaws.com/  
 
 It should show the hostname like `hello ip-10-128-11-251.internal`
+
+Finally, run this to destroy all the stacks and resources
+```bash
+pipenv run runway destroy
+```
